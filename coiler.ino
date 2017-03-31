@@ -1,11 +1,12 @@
 /* Arduino code for Coiling Machine
-Version 0.2
+Version 0.3
 
 By A Jacob Cord
 
 Version History
 0.1 Limit switch detection and console feedback (28 Mar 2017)
 0.2 Stepper library added (30 Mar 2017)
+0.3 Display and test functions added (31 Mar 2017);
 
 The OLED should be connected to the I2C bus, SDA to pin A4 and SCL to pin A5. VCC to 3.3 or 5v. Its address is 0x3C
 */
@@ -51,6 +52,7 @@ int displayTestTextSize = 0;
   40/360 = 0.111111
   40/200 = 0.2
   Using degrees will yield more accuracy most of the time, since 360>200
+  * Using degrees very likely requires microstepping!
 */
 
 // Remington Magnet Wire definitions
@@ -78,13 +80,31 @@ int displayTestTextSize = 0;
 Adafruit_SSD1306 display(OLED_RESET);
 int currentDirection = 0;
 
-BasicStepperDriver sCoil(MOTOR_STEPS, COIL_DIR, COIL_STEP);
-BasicStepperDriver sCarriage(MOTOR_STEPS, CARRIAGE_DIR, CARRIAGE_STEP);
-
 /* BasicStepperDriver.move(int steps)
    BasicStepperDriver.rotate(int degrees)
    negative for reverse direction
 */
+BasicStepperDriver sCoil(MOTOR_STEPS, COIL_DIR, COIL_STEP);
+BasicStepperDriver sCarriage(MOTOR_STEPS, CARRIAGE_DIR, CARRIAGE_STEP);
+
+// Bitmap Logo
+static unsigned char PROGMEM const logo_bmp[] = 
+{ B11111111, B11111111,
+  B10000111, B00000001,
+  B10011000, B01111101,
+  B10101000, B01000101,
+  B10001111, B01000101,
+  B10111000, B01111101,
+  B10011100, B00000001,
+  B10101010, B00111001,
+  B10101010, B00010001,
+  B10101001, B00010001,
+  B10101001, B01111101,
+  B10001000, B00010001,
+  B10101000, B00010001,
+  B10011000, B01111101,
+  B10000000, B00000001,
+  B11111111, B11111111 };
 
 //
 // Initialization
@@ -158,17 +178,25 @@ void reverseCarriageDirection() {
 #endif
 }
 
+/****
+** DISPLAY FUNCTIONS
+OLED's first 16 rows are Yellow, the rest are blue
+Adafruit GFX library fonts are 5x7 pixels, so font 2 is a good top size?
+****/
 void writeGreeting() {
     display.clearDisplay();
 
-    display.setTextSize(1);
+    display.setTextSize(2);
     display.setTextColor(WHITE);
     display.setCursor(0, 0); // OLED mfr says +2 to x axis
 
-    display.println("Welcome to");
+    display.println("Welcome to the Machine");
 
-    display.setTextSize(2);
-    display.println("The Machine");
+    drawLogo(2,16);
+
+    display.setCursor(20, 20);
+    display.println("Left Limit-Display Check");
+    display.println("Right Limit-Carriage Check");
 
     display.display();
 }
@@ -179,31 +207,17 @@ void writeStepperTest() {
     display.setTextSize(3);
     display.setTextColor(WHITE);
     display.setCursor(0, 0);
+    display.println("Stepper Motor");
     display.println("Test Mode");
     display.display();
-}
-
-void testStepperMotors() {
-    writeStepperTest();
-    delay(500);
-
-    sCoil.setMicrostep(MICROSTEPS)
-    sCarriage.setMicrosteps(MICROSTEPS);
-
-    sCoil.rotate(360);
-    sCarriage.rotate(360);
-
-    sCarriage.rotate(-360);
-    sCoil.rotate(-360);
-
-    writeGreeting();
 }
 
 void writeDisplayTest(int size) {
     display.clearDisplay();
     display.setTextSize(size);
     display.setCursor(0, 0);
-    display.println("AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPpQqRrSsTtUuVvWwXxYyZz");
+    display.println("AaBbCcDdEeFfGgHhIiJjKkLlMm");
+    display.println("NnOoPpQqRrSsTtUuVvWwXxYyZz");
     display.println("123456789012345678901234567890");
     display.display();
 }
@@ -216,10 +230,74 @@ void writeToDisplay(char *text, int size=1) {
     display.display();
 }
 
+void writeToDisplay(char *text[], int lines, int size=1) {
+    display.clearDisplay();
+    display.setTextSize(size);
+    display.setCursor(0, 0);
+
+    for(int i=0; i<lines; ++i) {
+        println(text[i]);
+    }
+    display.display();
+}
+
+void displayHeader() {
+    display.clearDisplay();
+
+    display.setTextSize(2);
+    display.setCursor(0, 0);
+    display.println("Jacob's Coiling Machine");
+
+    display.setCursor(0, 16);
+    display.setTextSize(6);
+    display.print("0/");
+
+    display.setTextSize(3);
+    display.print("0");
+
+    display.display();
+}
+
+void updateCoilDisplay(unsigned int turns, unsigned int total) {
+    display.setCursor(0, 16);
+    display.setTextSize(6);
+    display.print(turns);
+    display.print("/");
+
+    display.setTextSize(3);
+    display.print(total)
+
+    display.display();
+}
+
+void drawLogo(unsigned int x, unsigned int y) {
+    display.drawBitmap(x, y, logo_bmp, 16, 16, 1)
+}
+
+
+/****
+** DIAGNOSTIC FUNCTIONS
+****/
+void testStepperMotors() {
+    writeStepperTest();
+    delay(500);
+
+    sCoil.setMicrostep(MICROSTEPS)
+    sCarriage.setMicrostep(MICROSTEPS);
+
+    sCoil.rotate(360);
+    sCarriage.rotate(360);
+
+    sCarriage.rotate(-360);
+    sCoil.rotate(-360);
+
+    writeGreeting();
+}
+
 void carriageTest() {
     writeToDisplay("Carriage Test", 2);
 
-    sCarriage.setMicrosteps(MICROSTEPS);
+    sCarriage.setMicrostep(MICROSTEPS);
 
     while(rightLimitTriggered() == 0) {
         sCarriage.rotate(6);
@@ -229,14 +307,38 @@ void carriageTest() {
         sCarriage.rotate(-6);
     }
 
-
     writeGreeting();
+}
+
+/****
+** COILING FUNCTIONS
+****/
+
+void makeCoil(unsigned int turns, unsigned int degreesPerTurn) {
+    displayHeader();
+
+    sCoil.setMicrostep(MICROSTEPS);
+    sCarriage.setMicrostep(MICROSTEPS);
+
+    for(unsigned int i=0; i<turns; ++i) {
+        sCoil.rotate(360);
+        updateCoilDisplay(i, turns);
+
+        sCarriage.rotate(currentDirection * REM22_DEGREES);
+
+        if(limitSwitchTriggered()) {
+            reverseCarriageDirection();
+        }
+    }
+}
+
+void makeFlipperCoil() {
+    makeCoil(900, REM22_DEGREES);
 }
 
 //
 // main loop
 //
-
 void loop() {
     if(leftLimitTriggered()) {
         writeDisplayTest(++displayTestTextSize);
@@ -244,6 +346,7 @@ void loop() {
 
     if(rightLimitTriggered()) {
         carriageTest();
+        displayTestTextSize = 0; // reset display test text size in case it's weird
     }
 
     delay(100);
