@@ -40,7 +40,8 @@ int displayTestTextSize = 0;
 
 // Stepper motor defines
 #define MOTOR_STEPS 200
-#define MICROSTEPS 1 // 1=full step, 2=half step, etc
+#define COIL_MICROSTEPS 1 // 1=full step, 2=half step, etc
+#define CARRIAGE_MICROSTEPS 1 // may change in the near future
 #define COIL_RPM 120
 #define CARRIAGE_RPM 120
 
@@ -206,7 +207,7 @@ void writeStepperTest() {
 
     display.setTextSize(3);
     display.setTextColor(WHITE);
-    display.setCursor(0, 0);
+    display.setCursor(0, 16);
     display.println("Stepper Motor");
     display.println("Test Mode");
     display.display();
@@ -282,8 +283,8 @@ void testStepperMotors() {
     writeStepperTest();
     delay(500);
 
-    sCoil.setMicrostep(MICROSTEPS)
-    sCarriage.setMicrostep(MICROSTEPS);
+    sCoil.setMicrostep(COIL_MICROSTEPS)
+    sCarriage.setMicrostep(CARRIAGE_MICROSTEPS);
 
     sCoil.rotate(360);
     sCarriage.rotate(360);
@@ -297,7 +298,7 @@ void testStepperMotors() {
 void carriageTest() {
     writeToDisplay("Carriage Test", 2);
 
-    sCarriage.setMicrostep(MICROSTEPS);
+    sCarriage.setMicrostep(CARRIAGE_MICROSTEPS);
 
     while(rightLimitTriggered() == 0) {
         sCarriage.rotate(6);
@@ -317,8 +318,8 @@ void carriageTest() {
 void makeCoil(unsigned int turns, unsigned int degreesPerTurn) {
     displayHeader();
 
-    sCoil.setMicrostep(MICROSTEPS);
-    sCarriage.setMicrostep(MICROSTEPS);
+    sCoil.setMicrostep(COIL_MICROSTEPS);
+    sCarriage.setMicrostep(CARRIAGE_MICROSTEPS);
 
     for(unsigned int i=0; i<turns; ++i) {
         sCoil.rotate(360);
