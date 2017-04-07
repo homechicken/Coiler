@@ -1,23 +1,11 @@
 /* Arduino code for Coiling Machine
-Version 0.3
-
 By A Jacob Cord
-
-Version History
-0.1 Limit switch detection and console feedback (28 Mar 2017)
-0.2 Stepper library added (30 Mar 2017)
-0.3 Display and test functions added (31 Mar 2017);
-
-The OLED should be connected to the I2C bus, SDA to pin A4 and SCL to pin A5. VCC to 3.3 or 5v. Its address is 0x3C
 */
 
 #include <Wire.h> // for the I2C protocol
 
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
-
-//#include <Arduino.h> // why?
-#include "BasicStepperDriver.h"
 
 #define DEBUG
 
@@ -28,328 +16,203 @@ The OLED should be connected to the I2C bus, SDA to pin A4 and SCL to pin A5. VC
 #define COIL_STEP 9
 #define CARRIAGE_DIR 10
 #define CARRIAGE_STEP 11
+#define MOTOR_ENABLE 12
 
-// carriage directions
-#define CARRIAGE_RIGHT 1
-#define CARRIAGE_LEFT -1
+// carriage directions (reverse if carriage stepper rotates differently)
+#define CARRIAGE_RIGHT 0
+#define CARRIAGE_LEFT 1
 
 // OLED definitions
 // what does this do, why is it defined if it's not connected to a pin??
 #define OLED_RESET 4
-int displayTestTextSize = 0;
-
-// Stepper motor defines
-#define MOTOR_STEPS 200
-#define COIL_MICROSTEPS 1 // 1=full step, 2=half step, etc
-#define CARRIAGE_MICROSTEPS 1 // may change in the near future
-#define COIL_RPM 120
-#define CARRIAGE_RPM 120
-
-/*
-  Carriage moves 0.111(repeating) millimeters per degree of rotation or 0.2mm per step
-  Belt pitch 2mm (GT2 belt)
-  Pulley teeth 20
-  One rotation: 40mm
-  40/360 = 0.111111
-  40/200 = 0.2
-  Using degrees will yield more accuracy most of the time, since 360>200
-  * Using degrees very likely requires microstepping!
-*/
-
-// Remington Magnet Wire definitions
-/*
-  18 AWG 1.087mm, 0.0428" diameter. 5.4 steps, 9.79 degrees
-  20 AWG 0.871mm, 0.0343" diameter. 4.3 steps, 7.84 degrees
-  22 AWG 0.668mm, 0.0263" diameter. 3.34 steps, 6.01 degrees
-  24 AWG 0.561mm, 0.0221" diameter. 2.8 steps, 5.05 degrees
-  26 AWG 0.426mm, 0.0168" diameter. 2.1 steps, 3.83 degrees
-  30 AWG 0.274mm, 0.0108" diameter. 1.37 steps, 2.46 degrees
-  32 AWG 0.236mm, 0.0093" diameter. 1.18 steps, 2.12 degrees
-  34 AWG 0.175mm, 0.0069" diameter. 0.87 steps, 1.57 degrees
-  36 AWG 0.139mm, 0.0055" diameter. 0.69 steps, 1.25 degrees
-  38 AWG 0.111mm, 0.0044" diameter. 0.55 steps, 1 degree
-  40 AWG 0.086mm, 0.0034" diameter. 0.43 steps, 0.77 degrees
-*/
-#define REM22_DEGREES 6
 
 // Check to make sure the library is correct
 #if (SSD1306_LCDHEIGHT != 64)
 #error("Height incorrect, please fix Adafruit_SSD1306.h, define SSD_1306_128_64!");
 #endif
 
-// A few global variables
 Adafruit_SSD1306 display(OLED_RESET);
-int currentDirection = 0;
 
-/* BasicStepperDriver.move(int steps)
-   BasicStepperDriver.rotate(int degrees)
-   negative for reverse direction
+// stepper pulse control in uSeconds. 20/250 = 360 degrees in 1.728 seconds
+#define PULSE_WIDTH 20
+#define PULSE_SPACE 250
+
+// Coil:Carriage move ratio. 22AWG should be 60:1
+// *** cannot be greater than 255 without modifying the makeCoil loop data type!
+
+/* Remington Magnet Wire definitions and ratios at 1/32 microstep
+  18 AWG 1.087mm, 0.0428" diameter. 36.79:1
+  20 AWG 0.871mm, 0.0343" diameter. 45.92:1
+  22 AWG 0.668mm, 0.0263" diameter. 59.88:1
+  23 AWG 0.599mm, 0.0235" diameter. 66.77:1
+  24 AWG 0.561mm, 0.0221" diameter. 71.30:1
+  26 AWG 0.426mm, 0.0168" diameter. 86.58:1
+  30 AWG 0.274mm, 0.0108" diameter. 145.98:1
+  32 AWG 0.236mm, 0.0093" diameter. 169.49:1
+  34 AWG 0.175mm, 0.0069" diameter. 228.57:1
+  36 AWG 0.139mm, 0.0055" diameter. 287.76:1 // update char!
+  38 AWG 0.111mm, 0.0044" diameter. 360.36:1 // update char!
+  40 AWG 0.086mm, 0.0034" diameter. 465.11:1 // update char!
 */
-BasicStepperDriver sCoil(MOTOR_STEPS, COIL_DIR, COIL_STEP);
-BasicStepperDriver sCarriage(MOTOR_STEPS, CARRIAGE_DIR, CARRIAGE_STEP);
+#define MOVE_RATIO 60
 
-// Bitmap Logo
-static unsigned char PROGMEM const logo_bmp[] = 
-{ B11111111, B11111111,
-  B10000111, B00000001,
-  B10011000, B01111101,
-  B10101000, B01000101,
-  B10001111, B01000101,
-  B10111000, B01111101,
-  B10011100, B00000001,
-  B10101010, B00111001,
-  B10101010, B00010001,
-  B10101001, B00010001,
-  B10101001, B01111101,
-  B10001000, B00010001,
-  B10101000, B00010001,
-  B10011000, B01111101,
-  B10000000, B00000001,
-  B11111111, B11111111 };
+// MAKING THE COILS
+#define COIL_NUMBER 900
+
+// should be 200 to 6400 depending on microstep settings
+#define STEPPER_STEPS 6400
 
 //
 // Initialization
 //
 void setup() {
-    Serial.begin(9600);
-
-    // give the display time to start up
-    delay(200);
-
-    display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
-    display.display(); // show splashscreen?
-    delay(2000);
-
-    pinMode(LEFT_HOME_SWITCH, INPUT);
-    pinMode(RIGHT_HOME_SWITCH, INPUT);
-
-    pinMode(COIL_DIR, OUTPUT);
-    pinMode(COIL_STEP, OUTPUT);
-    pinMode(CARRIAGE_DIR, OUTPUT);
-    pinMode(CARRIAGE_STEP, OUTPUT);
-
-    currentDirection = CARRIAGE_RIGHT;
-
-    sCoil.setRPM(COIL_RPM)
-    sCarriage.setRPM(CARRIAGE_RPM);
-
-    testStepperMotors();
-}
-
-int rightLimitTriggered() {
-    return digitalRead(RIGHT_HOME_SWITCH);
-}
-
-int leftLimitTriggered() {
-    return digitalRead(LEFT_HOME_SWITCH);
-}
-
-int limitSwitchTriggered() {
-    int limitSwitch = 0;
-
-    if(currentDirection == CARRIAGE_RIGHT) {
-        limitSwitch = rightLimitTriggered();
-    } else {
-        limitSwitch = leftLimitTriggered();
-    }
-
+  Serial.begin(9600);
+  
 #ifdef DEBUG
-    Serial.print("limitSwitchTriggered is returning value ");
-    Serial.println(limitSwitch);
+  Serial.println(F("Setting Arduino pin modes.."));
 #endif
 
-    return limitSwitch;
-}
+  pinMode(LEFT_HOME_SWITCH, INPUT_PULLUP);
+  pinMode(RIGHT_HOME_SWITCH, INPUT_PULLUP);
 
-void reverseCarriageDirection() {
-    if(currentDirection == CARRIAGE_RIGHT) {
-        currentDirection = CARRIAGE_LEFT);
-    } else {
-        currentDirection = CARRIAGE_RIGHT;
-    }
+  pinMode(COIL_DIR, OUTPUT);
+  pinMode(COIL_STEP, OUTPUT);
+  pinMode(CARRIAGE_DIR, OUTPUT);
+  pinMode(CARRIAGE_STEP, OUTPUT);
+  pinMode(MOTOR_ENABLE, OUTPUT);
 
 #ifdef DEBUG
-    Serial.print("Direction changed to ");
-
-    if(currentDirection == CARRIAGE_RIGHT) {
-        Serial.println("right");
-    } else {
-        Serial.println("left");
-    }
+  Serial.println(F("Initializing display.."));
 #endif
-}
 
-/****
-** DISPLAY FUNCTIONS
-OLED's first 16 rows are Yellow, the rest are blue
-Adafruit GFX library fonts are 5x7 pixels, so font 2 is a good top size?
-****/
-void writeGreeting() {
-    display.clearDisplay();
-
-    display.setTextSize(2);
-    display.setTextColor(WHITE);
-    display.setCursor(0, 0); // OLED mfr says +2 to x axis
-
-    display.println("Welcome to the Machine");
-
-    drawLogo(2,16);
-
-    display.setCursor(20, 20);
-    display.println("Left Limit-Display Check");
-    display.println("Right Limit-Carriage Check");
-
-    display.display();
-}
-
-void writeStepperTest() {
-    display.clearDisplay();
-
-    display.setTextSize(3);
-    display.setTextColor(WHITE);
-    display.setCursor(0, 16);
-    display.println("Stepper Motor");
-    display.println("Test Mode");
-    display.display();
-}
-
-void writeDisplayTest(int size) {
-    display.clearDisplay();
-    display.setTextSize(size);
-    display.setCursor(0, 0);
-    display.println("AaBbCcDdEeFfGgHhIiJjKkLlMm");
-    display.println("NnOoPpQqRrSsTtUuVvWwXxYyZz");
-    display.println("123456789012345678901234567890");
-    display.display();
-}
-
-void writeToDisplay(char *text, int size=1) {
-    display.clearDisplay();
-    display.setTextSize(size);
-    display.setCursor(0, 0);
-    display.println(text);
-    display.display();
-}
-
-void writeToDisplay(char *text[], int lines, int size=1) {
-    display.clearDisplay();
-    display.setTextSize(size);
-    display.setCursor(0, 0);
-
-    for(int i=0; i<lines; ++i) {
-        println(text[i]);
-    }
-    display.display();
-}
-
-void displayHeader() {
-    display.clearDisplay();
-
-    display.setTextSize(2);
-    display.setCursor(0, 0);
-    display.println("Jacob's Coiling Machine");
-
-    display.setCursor(0, 16);
-    display.setTextSize(6);
-    display.print("0/");
-
-    display.setTextSize(3);
-    display.print("0");
-
-    display.display();
-}
-
-void updateCoilDisplay(unsigned int turns, unsigned int total) {
-    display.setCursor(0, 16);
-    display.setTextSize(6);
-    display.print(turns);
-    display.print("/");
-
-    display.setTextSize(3);
-    display.print(total)
-
-    display.display();
-}
-
-void drawLogo(unsigned int x, unsigned int y) {
-    display.drawBitmap(x, y, logo_bmp, 16, 16, 1)
-}
-
-
-/****
-** DIAGNOSTIC FUNCTIONS
-****/
-void testStepperMotors() {
-    writeStepperTest();
-    delay(500);
-
-    sCoil.setMicrostep(COIL_MICROSTEPS)
-    sCarriage.setMicrostep(CARRIAGE_MICROSTEPS);
-
-    sCoil.rotate(360);
-    sCarriage.rotate(360);
-
-    sCarriage.rotate(-360);
-    sCoil.rotate(-360);
-
-    writeGreeting();
-}
-
-void carriageTest() {
-    writeToDisplay("Carriage Test", 2);
-
-    sCarriage.setMicrostep(CARRIAGE_MICROSTEPS);
-
-    while(rightLimitTriggered() == 0) {
-        sCarriage.rotate(6);
-    }
-
-    while(leftLimitTriggered() == 0) {
-        sCarriage.rotate(-6);
-    }
-
-    writeGreeting();
-}
-
-/****
-** COILING FUNCTIONS
-****/
-
-void makeCoil(unsigned int turns, unsigned int degreesPerTurn) {
-    displayHeader();
-
-    sCoil.setMicrostep(COIL_MICROSTEPS);
-    sCarriage.setMicrostep(CARRIAGE_MICROSTEPS);
-
-    for(unsigned int i=0; i<turns; ++i) {
-        sCoil.rotate(360);
-        updateCoilDisplay(i, turns);
-
-        sCarriage.rotate(currentDirection * REM22_DEGREES);
-
-        if(limitSwitchTriggered()) {
-            reverseCarriageDirection();
-        }
-    }
-}
-
-void makeFlipperCoil() {
-    makeCoil(900, REM22_DEGREES);
+  display.begin(SSD1306_SWITCHCAPVCC, 0X3C);
+  display.display(); // show splashscreen
+  delay(1000);
+  display.clearDisplay();
+  
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(0,0);
+  display.println(F("Jacob's Coiler"));
+  display.setCursor(0, 16);
+  display.println(F("Left: Display Check"));
+  display.println(F("\nRight: Carriage Check"));
+  display.display();
 }
 
 //
 // main loop
 //
 void loop() {
-    if(leftLimitTriggered()) {
-        writeDisplayTest(++displayTestTextSize);
-    }
+  if(!digitalRead(RIGHT_HOME_SWITCH)) {
+    testMotor();
+  } else if(!digitalRead(LEFT_HOME_SWITCH)) {
+    testDisplay();
+  }
 
-    if(rightLimitTriggered()) {
-        carriageTest();
-        displayTestTextSize = 0; // reset display test text size in case it's weird
-    }
-
-    delay(100);
+  delay(100);
 }
 
+void testMotor() {
+#ifdef DEBUG
+  Serial.println(F("Start motor test"));
+#endif
+
+  for(char i=0; i<2; ++i) {  
+    for(int j=0; j<6400; ++j) {
+      digitalWrite(COIL_STEP, HIGH);
+      delayMicroseconds(PULSE_WIDTH);
+      digitalWrite(COIL_STEP, LOW);
+      delayMicroseconds(PULSE_SPACE);
+    }
+    digitalWrite(COIL_DIR, HIGH);
+  }
+
+  digitalWrite(COIL_DIR, LOW);
+
+  for(char i=0; i<2; ++i) {
+    for(int j=0; j<6400; ++j) {
+      digitalWrite(CARRIAGE_STEP, HIGH);
+      delayMicroseconds(PULSE_WIDTH);
+      digitalWrite(CARRIAGE_STEP, LOW);
+      delayMicroseconds(PULSE_SPACE);
+    }
+    digitalWrite(CARRIAGE_DIR, HIGH);
+  }
+  digitalWrite(CARRIAGE_DIR, LOW);i
+  
+#ifdef DEBUG
+  Serial.println(F("End motor test"));
+#endif
+}
+
+void testDisplay() {
+  unsigned int coil = 0;
+
+  updateDisplay(coil);
+
+  while(digitalRead(RIGHT_HOME_SWITCH) == 1) {
+    if(digitalRead(LEFT_HOME_SWITCH) == 0) {
+      updateDisplay(coil++);
+    }
+    delay(100);
+  }
+
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setCursor(0,0);
+  display.println(F("Jacob's Coiler"));
+  display.setCursor(0, 16);
+  display.println(F("Left: Display Check"));
+  display.println(F("\nRight: Carriage Check"));
+  display.display();
+}
+
+void updateDisplay(unsigned int coils) {
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.setTextSize(2);
+  display.println(F("Coiling..."));
+  display.setCursor(0, 20);
+  display.setTextSize(3);
+  display.print(coils);
+  display.setTextSize(2);
+  display.setCursor(50, 35);
+  display.println(F("/900"));
+  display.display();
+}
+
+void makeCoil() {
+  char currentDirection = CARRIAGE_RIGHT;
+  unsigned char ratio = 0;
+  
+  updateDisplay(0);
+  
+  for(unsigned int coil=0; coil<COIL_NUMBER; ++coil) {
+    for(unsigned int i=0; i<STEPPER_STEPS; ++i) {
+      if(ratio++ >= MOVE_RATIO) {
+        digitalWrite(CARRIAGE_STEP, HIGH);
+        delayMicroseconds(PULSE_WIDTH);
+        digitalWrite(CARRIAGE_STEP, LOW);
+        
+        ratio = 0;
+        
+        // check for direction change
+        if(currentDirection == CARRIAGE_RIGHT && !digitalRead(RIGHT_HOME_SWITCH)) {
+          digitalWrite(CARRIAGE_DIR, CARRIAGE_LEFT);
+          currentDirection = CARRIAGE_LEFT;
+        } else if(currentDirection == CARRIAGE_LEFT && !digitalRead(LEFT_HOME_SWITCH)) {
+          digitalWrite(CARRIAGE_DIR, CARRIAGE_RIGHT);
+          currentDirection = CARRIAGE_RIGHT;
+        }
+      } // MOVE_RATIO
+        
+        digitalWrite(COIL_STEP, HIGH);
+        delayMicroseconds(PULSE_WIDTH);
+        digitalWrite(COIL_STEP, LOW);
+        delayMicroseconds(PULSE_SPACE);
+    } // STEPPER_STEPS, a single rotation
+        
+        updateDisplay(coil);
+    } // COIL_NUMBER
+}
