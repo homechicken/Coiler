@@ -118,6 +118,8 @@ void testMotor() {
   Serial.println(F("Start motor test"));
 #endif
 
+  digitalWrite(MOTOR_ENABLE, HIGH);
+
   for(char i=0; i<2; ++i) {  
     for(int j=0; j<6400; ++j) {
       digitalWrite(COIL_STEP, HIGH);
@@ -140,6 +142,8 @@ void testMotor() {
     digitalWrite(CARRIAGE_DIR, HIGH);
   }
   digitalWrite(CARRIAGE_DIR, LOW);i
+
+  digitalWrite(MOTOR_ENABLE, LOW);
   
 #ifdef DEBUG
   Serial.println(F("End motor test"));
@@ -187,6 +191,8 @@ void makeCoil() {
   unsigned char ratio = 0;
   
   updateDisplay(0);
+
+  digitalWrite(MOTOR_ENABLE, HIGH);
   
   for(unsigned int coil=0; coil<COIL_NUMBER; ++coil) {
     for(unsigned int i=0; i<STEPPER_STEPS; ++i) {
@@ -215,4 +221,6 @@ void makeCoil() {
         
         updateDisplay(coil);
     } // COIL_NUMBER
+
+  digitalWrite(MOTOR_ENABLE, LOW);
 }
