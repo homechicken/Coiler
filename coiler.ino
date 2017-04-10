@@ -18,9 +18,13 @@ By A Jacob Cord
 #define CARRIAGE_STEP 11
 #define MOTOR_ENABLE 12
 
+// coil motor directions, reverse if necessary
+#define COIL_COIL 1
+#define COIL_UNCOIL 0
+
 // carriage directions (reverse if carriage stepper rotates differently)
-#define CARRIAGE_RIGHT 0
-#define CARRIAGE_LEFT 1
+#define CARRIAGE_RIGHT 1
+#define CARRIAGE_LEFT 0
 
 // OLED definitions
 // what does this do, why is it defined if it's not connected to a pin??
@@ -95,8 +99,8 @@ void setup() {
   display.setCursor(0,0);
   display.println(F("Jacob's Coiler"));
   display.setCursor(0, 16);
-  display.println(F("Left: Display Check"));
-  display.println(F("\nRight: Carriage Check"));
+  display.println(F("Left: Switch Check"));
+  display.println(F("\nRight: Stepper Check"));
   display.display();
 }
 
@@ -107,7 +111,7 @@ void loop() {
   if(!digitalRead(RIGHT_HOME_SWITCH)) {
     testMotor();
   } else if(!digitalRead(LEFT_HOME_SWITCH)) {
-    testDisplay();
+    testLimitSwitches();
   }
 
   delay(100);
@@ -119,7 +123,8 @@ void testMotor() {
 #endif
 
   digitalWrite(MOTOR_ENABLE, HIGH);
-
+  digitalWrite(COIL_DIR, COIL_COIL);
+   
   for(char i=0; i<2; ++i) {  
     for(int j=0; j<6400; ++j) {
       digitalWrite(COIL_STEP, HIGH);
@@ -127,11 +132,11 @@ void testMotor() {
       digitalWrite(COIL_STEP, LOW);
       delayMicroseconds(PULSE_SPACE);
     }
-    digitalWrite(COIL_DIR, HIGH);
+    digitalWrite(COIL_DIR, COIL_UNCOIL);
   }
 
-  digitalWrite(COIL_DIR, LOW);
-
+  digitalWrite(CARRIAGE_DIR, CARRIAGE_RIGHT);
+  
   for(char i=0; i<2; ++i) {
     for(int j=0; j<6400; ++j) {
       digitalWrite(CARRIAGE_STEP, HIGH);
@@ -139,15 +144,43 @@ void testMotor() {
       digitalWrite(CARRIAGE_STEP, LOW);
       delayMicroseconds(PULSE_SPACE);
     }
-    digitalWrite(CARRIAGE_DIR, HIGH);
+    digitalWrite(CARRIAGE_DIR, CARRIAGE_LEFT);
   }
-  digitalWrite(CARRIAGE_DIR, LOW);i
 
+  digitalWrite(COIL_DIR, LOW);
+  digitalWrite(CARRIAGE_DIR, LOW);
   digitalWrite(MOTOR_ENABLE, LOW);
   
 #ifdef DEBUG
   Serial.println(F("End motor test"));
 #endif
+}
+
+void testLimitSwitches() {
+  digitalWrite(MOTOR_ENABLE, HIGH);
+  char currentDirection = CARRIAGE_RIGHT;
+  
+  digitalWrite(CARRIAGE_DIR, currentDirection);
+
+  for(int i=0; i<10; ++i) {
+    for(int j=0; j<6400; ++j) {
+      digitalWrite(CARRIAGE_STEP, HIGH);
+      delayMicroseconds(PULSE_WIDTH);
+      digitalWrite(CARRIAGE_STEP, LOW);
+      delayMicroseconds(PULSE_SPACE);
+
+      if(currentDirection == CARRIAGE_RIGHT && digitalRead(RIGHT_HOME_SWITCH) == 0) {
+        currentDirection = CARRIAGE_LEFT;
+        digitalWrite(CARRIAGE_DIR, currentDirection);
+      } else if(currentDirection == CARRIAGE_LEFT && digitalRead(LEFT_HOME_SWITCH) == 0) {
+        currentDirection = CARRIAGE_RIGHT;
+        digitalWrite(CARRIAGE_DIR, currentDirection);
+      }
+    } // step loop
+  } // count loop
+  
+  digitalWrite(CARRIAGE_DIR, LOW);
+  digitalWrite(MOTOR_ENABLE, LOW);
 }
 
 void testDisplay() {
@@ -168,7 +201,7 @@ void testDisplay() {
   display.println(F("Jacob's Coiler"));
   display.setCursor(0, 16);
   display.println(F("Left: Display Check"));
-  display.println(F("\nRight: Carriage Check"));
+  display.println(F("\nRight: Stepper Check"));
   display.display();
 }
 
