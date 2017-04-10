@@ -37,6 +37,10 @@ By A Jacob Cord
 
 Adafruit_SSD1306 display(OLED_RESET);
 
+// Menus
+// 0-greeting/motor test, 2-switch test, 3 22/900 coil
+unsigned char currentMenu=0;
+
 // stepper pulse control in uSeconds. 20/250 = 360 degrees in 1.728 seconds
 #define PULSE_WIDTH 20
 #define PULSE_SPACE 250
@@ -92,15 +96,41 @@ void setup() {
   display.begin(SSD1306_SWITCHCAPVCC, 0X3C);
   display.display(); // show splashscreen
   delay(1000);
-  display.clearDisplay();
   
+  menuGreeting();
+}
+
+void menuGreeting() {
+  display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(WHITE);
   display.setCursor(0,0);
-  display.println(F("Jacob's Coiler"));
+  display.println(F("Coilatron 9000"));
   display.setCursor(0, 16);
-  display.println(F("Left: Switch Check"));
-  display.println(F("\nRight: Stepper Check"));
+  display.println(F("Left: Menus"));
+  display.println(F("\nRight: Test motors"));
+  display.display();
+}
+
+void menuSwitches() {
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setCursor(0,0);
+  display.println(F("Coilatron 9000"));
+  display.setCursor(0, 16);
+  display.println(F("Left: Menus"));
+  display.println(F("\nRight: Switch test"));
+  display.display();
+}
+
+void menuCoil() {
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setCursor(0,0);
+  display.println(F("Coilatron 9000"));
+  display.setCursor(0, 16);
+  display.println(F("Left: Menus"));
+  display.println(F("\nRight: 22-900 coil"));
   display.display();
 }
 
@@ -109,18 +139,34 @@ void setup() {
 //
 void loop() {
   if(!digitalRead(RIGHT_HOME_SWITCH)) {
-    testMotor();
+    switch(currentMenu) {
+      case 0: testMotors(); break;
+      case 1: testSwitches(); break;
+      case 2: coil22900(); break;
+      default: // do nothing
+    }
   } else if(!digitalRead(LEFT_HOME_SWITCH)) {
-    testLimitSwitches();
+    if(++currentMenu > 2) {
+      currentMenu = 0;
+    }
+
+    switch(currentMenu) {
+      case 0: menuGreeting(); break;
+      case 1: menuSwitches(); break;
+      case 2: menuCoil(); break;
+      default: menuGreeting();
+    }
   }
 
+  // impose short delay between loops
   delay(100);
 }
 
-void testMotor() {
+void testMotors() {
 #ifdef DEBUG
   Serial.println(F("Start motor test"));
 #endif
+  currentDirection = CARRIAGE_RIGHT;
 
   digitalWrite(MOTOR_ENABLE, HIGH);
   digitalWrite(COIL_DIR, COIL_COIL);
@@ -135,7 +181,7 @@ void testMotor() {
     digitalWrite(COIL_DIR, COIL_UNCOIL);
   }
 
-  digitalWrite(CARRIAGE_DIR, CARRIAGE_RIGHT);
+  digitalWrite(CARRIAGE_DIR, currentDirection); 
   
   for(char i=0; i<2; ++i) {
     for(int j=0; j<6400; ++j) {
@@ -143,8 +189,9 @@ void testMotor() {
       delayMicroseconds(PULSE_WIDTH);
       digitalWrite(CARRIAGE_STEP, LOW);
       delayMicroseconds(PULSE_SPACE);
+
+      checkLimitSwitches();
     }
-    digitalWrite(CARRIAGE_DIR, CARRIAGE_LEFT);
   }
 
   digitalWrite(COIL_DIR, LOW);
@@ -156,7 +203,7 @@ void testMotor() {
 #endif
 }
 
-void testLimitSwitches() {
+void testSwitches() {
   digitalWrite(MOTOR_ENABLE, HIGH);
   char currentDirection = CARRIAGE_RIGHT;
   
@@ -169,13 +216,7 @@ void testLimitSwitches() {
       digitalWrite(CARRIAGE_STEP, LOW);
       delayMicroseconds(PULSE_SPACE);
 
-      if(currentDirection == CARRIAGE_RIGHT && digitalRead(RIGHT_HOME_SWITCH) == 0) {
-        currentDirection = CARRIAGE_LEFT;
-        digitalWrite(CARRIAGE_DIR, currentDirection);
-      } else if(currentDirection == CARRIAGE_LEFT && digitalRead(LEFT_HOME_SWITCH) == 0) {
-        currentDirection = CARRIAGE_RIGHT;
-        digitalWrite(CARRIAGE_DIR, currentDirection);
-      }
+      checkLimitSwitches();
     } // step loop
   } // count loop
   
@@ -183,29 +224,17 @@ void testLimitSwitches() {
   digitalWrite(MOTOR_ENABLE, LOW);
 }
 
-void testDisplay() {
-  unsigned int coil = 0;
-
-  updateDisplay(coil);
-
-  while(digitalRead(RIGHT_HOME_SWITCH) == 1) {
-    if(digitalRead(LEFT_HOME_SWITCH) == 0) {
-      updateDisplay(coil++);
-    }
-    delay(100);
+void checkLimitSwitches() {
+  if(currentDirection == CARRIAGE_RIGHT && digitalRead(RIGHT_HOME_SWITCH) == 0) {
+    currentDirection = CARRIAGE_LEFT;
+    digitalWrite(CARRIAGE_DIR, currentDirection);
+  } else if(currentDirection == CARRIAGE_LEFT && digitalRead(LEFT_HOME_SWITCH) == 0) {
+    currentDirection = CARRIAGE_RIGHT;
+    digitalWrite(CARRIAGE_DIR, currentDirection);
   }
-
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setCursor(0,0);
-  display.println(F("Jacob's Coiler"));
-  display.setCursor(0, 16);
-  display.println(F("Left: Display Check"));
-  display.println(F("\nRight: Stepper Check"));
-  display.display();
 }
 
-void updateDisplay(unsigned int coils) {
+void updateDisplay(unsigned int coils, unsigned int total) {
   display.clearDisplay();
   display.setCursor(0, 0);
   display.setTextSize(2);
@@ -215,45 +244,44 @@ void updateDisplay(unsigned int coils) {
   display.print(coils);
   display.setTextSize(2);
   display.setCursor(50, 35);
-  display.println(F("/900"));
+  display.print(F("/"));
+  display.println(total);
   display.display();
 }
 
-void makeCoil() {
+void coil22900() {
   char currentDirection = CARRIAGE_RIGHT;
+
   unsigned char ratio = 0;
-  
-  updateDisplay(0);
+  const unsigned int moveRatio = 60;
+
+  int totalCoils = 900;
+
+  updateDisplay(0, totalCoils);
 
   digitalWrite(MOTOR_ENABLE, HIGH);
   
-  for(unsigned int coil=0; coil<COIL_NUMBER; ++coil) {
+  for(unsigned int coil=0; coil<totalCoils; ++coil) {
     for(unsigned int i=0; i<STEPPER_STEPS; ++i) {
-      if(ratio++ >= MOVE_RATIO) {
+      if(ratio++ >= moveRatio) {
         digitalWrite(CARRIAGE_STEP, HIGH);
         delayMicroseconds(PULSE_WIDTH);
         digitalWrite(CARRIAGE_STEP, LOW);
         
         ratio = 0;
+
+        checkLimitSwitches();        
+      } // moveRatio exceeded
         
-        // check for direction change
-        if(currentDirection == CARRIAGE_RIGHT && !digitalRead(RIGHT_HOME_SWITCH)) {
-          digitalWrite(CARRIAGE_DIR, CARRIAGE_LEFT);
-          currentDirection = CARRIAGE_LEFT;
-        } else if(currentDirection == CARRIAGE_LEFT && !digitalRead(LEFT_HOME_SWITCH)) {
-          digitalWrite(CARRIAGE_DIR, CARRIAGE_RIGHT);
-          currentDirection = CARRIAGE_RIGHT;
-        }
-      } // MOVE_RATIO
-        
-        digitalWrite(COIL_STEP, HIGH);
-        delayMicroseconds(PULSE_WIDTH);
-        digitalWrite(COIL_STEP, LOW);
-        delayMicroseconds(PULSE_SPACE);
+      digitalWrite(COIL_STEP, HIGH);
+      delayMicroseconds(PULSE_WIDTH);
+      digitalWrite(COIL_STEP, LOW);
+      delayMicroseconds(PULSE_SPACE);
     } // STEPPER_STEPS, a single rotation
         
-        updateDisplay(coil);
-    } // COIL_NUMBER
+      updateDisplay(coil, totalCoils);
+  } // total coils
 
   digitalWrite(MOTOR_ENABLE, LOW);
 }
+
