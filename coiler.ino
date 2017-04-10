@@ -62,10 +62,6 @@ unsigned char currentMenu=0;
   38 AWG 0.111mm, 0.0044" diameter. 360.36:1 // update char!
   40 AWG 0.086mm, 0.0034" diameter. 465.11:1 // update char!
 */
-#define MOVE_RATIO 60
-
-// MAKING THE COILS
-#define COIL_NUMBER 900
 
 // should be 200 to 6400 depending on microstep settings
 #define STEPPER_STEPS 6400
@@ -101,6 +97,9 @@ void setup() {
 }
 
 void menuGreeting() {
+#ifdef DEBUG
+  Serial.println(F("Displaying Greeting menu"));
+#endif
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(WHITE);
@@ -113,6 +112,9 @@ void menuGreeting() {
 }
 
 void menuSwitches() {
+#ifdef DEBUG
+  Serial.println(F("Displaying Switch menu"));
+#endif
   display.clearDisplay();
   display.setTextSize(1);
   display.setCursor(0,0);
@@ -124,6 +126,9 @@ void menuSwitches() {
 }
 
 void menuCoil() {
+#ifdef DEBUG
+  Serial.println(F("Displaying coil menu"));
+#endif
   display.clearDisplay();
   display.setTextSize(1);
   display.setCursor(0,0);
@@ -204,6 +209,10 @@ void testMotors() {
 }
 
 void testSwitches() {
+#ifdef DEBUG
+  Serial.println(F("Starting limit switch test"));
+#endif
+
   digitalWrite(MOTOR_ENABLE, HIGH);
   char currentDirection = CARRIAGE_RIGHT;
   
@@ -226,9 +235,15 @@ void testSwitches() {
 
 void checkLimitSwitches() {
   if(currentDirection == CARRIAGE_RIGHT && digitalRead(RIGHT_HOME_SWITCH) == 0) {
+#ifdef DEBUG
+  Serial.println(F("Right limit hit, changing direction!"));
+#endif
     currentDirection = CARRIAGE_LEFT;
     digitalWrite(CARRIAGE_DIR, currentDirection);
   } else if(currentDirection == CARRIAGE_LEFT && digitalRead(LEFT_HOME_SWITCH) == 0) {
+#ifdef DEBUG
+  Serial.println(F("Left limit hit, changing direction!"));
+#endif
     currentDirection = CARRIAGE_RIGHT;
     digitalWrite(CARRIAGE_DIR, currentDirection);
   }
@@ -253,9 +268,9 @@ void coil22900() {
   char currentDirection = CARRIAGE_RIGHT;
 
   unsigned char ratio = 0;
-  const unsigned int moveRatio = 60;
+  const unsigned char moveRatio = 60;
 
-  int totalCoils = 900;
+  const unsigned int totalCoils = 900;
 
   updateDisplay(0, totalCoils);
 
