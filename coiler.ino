@@ -42,11 +42,9 @@ Adafruit_SSD1306 display(OLED_RESET);
 unsigned char currentMenu=0;
 
 // stepper pulse control in uSeconds. 20/250 = 360 degrees in 1.728 seconds
+// 155 total time = 1 revolution per second
 #define PULSE_WIDTH 20
 #define PULSE_SPACE 250
-
-// Coil:Carriage move ratio. 22AWG should be 60:1
-// *** cannot be greater than 255 without modifying the makeCoil loop data type!
 
 /* Remington Magnet Wire definitions and ratios at 1/32 microstep
   18 AWG 1.087mm, 0.0428" diameter. 36.79:1
@@ -264,6 +262,16 @@ void updateDisplay(unsigned int coils, unsigned int total) {
   display.display();
 }
 
+void displayFinished() {
+  display.clearDisplay();
+  display.setCursor(0,0);
+  display.setTextSize(1);
+  display.println(F("Coilatron 9000"));
+  display.setCursor(0, 16);
+  display.println(F("END OF LINE"));
+  display.display();
+}
+
 void coil22900() {
   char currentDirection = CARRIAGE_RIGHT;
 
@@ -275,6 +283,8 @@ void coil22900() {
   updateDisplay(0, totalCoils);
 
   digitalWrite(MOTOR_ENABLE, HIGH);
+  digitalWrite(COIL_DIR, COIL_COIL);
+  digitalWrite(CARRIAGE_DIR, CARRIAGE_RIGHT);
   
   for(unsigned int coil=0; coil<totalCoils; ++coil) {
     for(unsigned int i=0; i<STEPPER_STEPS; ++i) {
@@ -298,5 +308,7 @@ void coil22900() {
   } // total coils
 
   digitalWrite(MOTOR_ENABLE, LOW);
+
+  displayFinished();
 }
 
