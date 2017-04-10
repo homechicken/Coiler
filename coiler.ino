@@ -90,6 +90,7 @@ void setup() {
   display.begin(SSD1306_SWITCHCAPVCC, 0X3C);
   display.display(); // show splashscreen
   delay(1000);
+  display.setTextColor(WHITE);
   
   menuGreeting();
 }
@@ -100,7 +101,6 @@ void menuGreeting() {
 #endif
   display.clearDisplay();
   display.setTextSize(1);
-  display.setTextColor(WHITE);
   display.setCursor(0,0);
   display.println(F("Coilatron 9000"));
   display.setCursor(0, 16);
