@@ -26,6 +26,8 @@ By A Jacob Cord
 #define CARRIAGE_RIGHT 1
 #define CARRIAGE_LEFT 0
 
+char currentDirection = CARRIAGE_RIGHT;
+
 // OLED definitions
 // what does this do, why is it defined if it's not connected to a pin??
 #define OLED_RESET 4
@@ -142,13 +144,19 @@ void menuCoil() {
 //
 void loop() {
   if(!digitalRead(RIGHT_HOME_SWITCH)) {
+#ifdef DEBUG
+  Serial.println(F("Right switch triggered"));
+#endif
     switch(currentMenu) {
       case 0: testMotors(); break;
       case 1: testSwitches(); break;
       case 2: coil22900(); break;
-      default: // do nothing
+      default: ;// do nothing
     }
   } else if(!digitalRead(LEFT_HOME_SWITCH)) {
+#ifdef DEBUG
+  Serial.println(F("Left switch triggered"));
+#endif
     if(++currentMenu > 2) {
       currentMenu = 0;
     }
@@ -210,13 +218,14 @@ void testSwitches() {
 #ifdef DEBUG
   Serial.println(F("Starting limit switch test"));
 #endif
-
+  delay(500); // don't pick up an early switch event!
+  currentDirection = CARRIAGE_RIGHT;
+  
   digitalWrite(MOTOR_ENABLE, HIGH);
-  char currentDirection = CARRIAGE_RIGHT;
   
   digitalWrite(CARRIAGE_DIR, currentDirection);
 
-  for(int i=0; i<10; ++i) {
+  for(int i=0; i<5; ++i) {
     for(int j=0; j<6400; ++j) {
       digitalWrite(CARRIAGE_STEP, HIGH);
       delayMicroseconds(PULSE_WIDTH);
@@ -273,22 +282,26 @@ void displayFinished() {
 }
 
 void coil22900() {
-  char currentDirection = CARRIAGE_RIGHT;
+  currentDirection = CARRIAGE_RIGHT;
 
   unsigned char ratio = 0;
-  const unsigned char moveRatio = 60;
+  const unsigned char moveRatio = 55;
 
-  const unsigned int totalCoils = 900;
+  const unsigned int totalCoils = 100;
 
   updateDisplay(0, totalCoils);
-
+  delay(500); // don't pick up an early switch event!
+  
   digitalWrite(MOTOR_ENABLE, HIGH);
   digitalWrite(COIL_DIR, COIL_COIL);
-  digitalWrite(CARRIAGE_DIR, CARRIAGE_RIGHT);
+  digitalWrite(CARRIAGE_DIR, currentDirection);
   
   for(unsigned int coil=0; coil<totalCoils; ++coil) {
     for(unsigned int i=0; i<STEPPER_STEPS; ++i) {
       if(ratio++ >= moveRatio) {
+  #ifdef DEBUG
+    Serial.println(F("Carriage move"));
+  #endif
         digitalWrite(CARRIAGE_STEP, HIGH);
         delayMicroseconds(PULSE_WIDTH);
         digitalWrite(CARRIAGE_STEP, LOW);
